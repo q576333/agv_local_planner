@@ -28,7 +28,7 @@ namespace nurbs_local_planner{
         }
         curve_common_ = std::make_unique<Curve_common>();
         curve_fitting_ = std::make_unique<Curve_fitting>();
-        trajectory_planner = std::make_unique<NURBSPlanner>(&constraints_);
+        trajectory_planner = std::make_unique<NURBSPlanner>(&constraints_, private_nh);
     }
 
     bool NURBSPlannerROS::cancel()
@@ -87,7 +87,11 @@ namespace nurbs_local_planner{
         left_distance = total_length;
         trajectory_planner->setAlreadyMoveLength(0.0);
         trajectory_planner->setSegmentAlreadyMoveLength(0.0);
+        current_velocity = trajectory_segment_vec.at(segment_index).start_velocity;
+        final_velocity = trajectory_segment_vec.at(segment_index).final_velocity;
         //std::cout << "trajectory segment size is : " << trajectory_segment_vec.size() << "\n";
+
+        trajectory_initial_angle = trajectory_planner->calculateOriginalAngle(spline_inf_, 0.01, use_nurbs);
 
         if(total_length > 0)
             return true;
@@ -104,9 +108,9 @@ namespace nurbs_local_planner{
         else
         {
             current_velocity = 0;
+            trajectory_planner->publishIdealCommandsPath("map");
             return true;
         }
-            
     }
 
     uint32_t NURBSPlannerROS::computeVelocityCommands(const geometry_msgs::PoseStamped& pose, const geometry_msgs::TwistStamped& velocity, geometry_msgs::TwistStamped &cmd_vel, std::string &message)
@@ -116,7 +120,7 @@ namespace nurbs_local_planner{
         if(!aligned_orientation)
         {
             robot_pose_yaw = tf::getYaw(pose.pose.orientation);
-            rotate_angle = trajectory_planner->normalizeAngel(trajectory_planner->calculateAlignAngle(robot_pose_yaw, spline_inf_, 0.01, use_nurbs));
+            rotate_angle = trajectory_planner->normalizeAngel(trajectory_planner->calculateAlignAngle(robot_pose_yaw, trajectory_initial_angle));
             
             if(std::abs(rotate_angle) > yaw_tolerance_)
             {
@@ -150,12 +154,13 @@ namespace nurbs_local_planner{
             {
                 segment_index++;
                 segment_left_distance = trajectory_segment_vec.at(segment_index).length;
+                current_velocity = trajectory_segment_vec.at(segment_index).start_velocity;
+                final_velocity = trajectory_segment_vec.at(segment_index).final_velocity;
                 segment_already_move = 0;
                 trajectory_planner->setSegmentAlreadyMoveLength(0);
                 std::cout << "segment: " << segment_index << " complete" << "\n";
             }
             
-            final_velocity = trajectory_segment_vec.at(segment_index).final_velocity;
             //std::cout << "segment final_velocity: " << final_velocity << "\n";
             //std::cout << "segment_left_distance: " << segment_left_distance << "\n";
             cmd_vel = trajectory_planner->computeSegmentVelocityCommands(pose, spline_inf_, accumulate_u, current_velocity, final_velocity, segment_left_distance, use_nurbs);

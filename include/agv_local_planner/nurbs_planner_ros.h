@@ -103,7 +103,7 @@ namespace nurbs_local_planner {
             int count = 1; //debug use
             bool aligned_orientation = false;
             double rotate_angle; //need to rotate angle
-            double align_angle;
+            double trajectory_initial_angle;
             double robot_pose_yaw;
             double yaw_tolerance_;
             double dist_tolerance_;

@@ -3,10 +3,13 @@
 
 namespace nurbs_local_planner{
     
-    NURBSPlanner::NURBSPlanner(PhysicalConstraints *ref_constraint)
+    NURBSPlanner::NURBSPlanner(PhysicalConstraints *ref_constraint, ros::NodeHandle private_nh)
     {
         pCurve_common = std::make_unique<Curve_common>();
         constraint = ref_constraint;
+        ideal_commands_path_pub_ = private_nh.advertise<nav_msgs::Path>("ideal_commands_path", 1, true);
+        command_index = 0;
+        sum_ideal_theta = 0;
     }
 
     NURBSPlanner::~NURBSPlanner()
@@ -37,6 +40,8 @@ namespace nurbs_local_planner{
         double ideal_length = 0;
         double update_delta_u = 0;
         double next_u_data = 0;
+        double ideal_delta_pose_x = 0;
+        double ideal_delta_pose_y = 0;
 
         //Computing suggest_velocity
         right_term = std::sqrt(std::pow(final_velocity, 2) + 0.25 * constraint->a_max_squre * constraint->sampling_dt_squre + constraint->a_max * (2 * left_distance - current_velocity * constraint->sampling_dt));
@@ -146,6 +151,18 @@ namespace nurbs_local_planner{
         u_data += delta_u;
         assignVelocity(cmd_vel_, update_suggest_velocity, angular_velocity);
         //assignVelocity(cmd_vel_, 0.0, 0.0);
+
+        //Visualization for ideal commands path
+        if(!std::isnan(ideal_theta))
+        {
+            sum_ideal_theta += angular_velocity * constraint->sampling_dt;
+            ideal_delta_pose_x = update_suggest_velocity * constraint->sampling_dt * std::cos(sum_ideal_theta);
+            ideal_delta_pose_y = update_suggest_velocity * constraint->sampling_dt * std::sin(sum_ideal_theta);
+            std::cout << "command index: " << command_index << "'s ideal_delta_pose_x is : " << ideal_delta_pose_x << "\n";
+            std::cout << "command index: " << command_index << "'s ideal_delta_pose_y is : " << ideal_delta_pose_y << "\n";
+            assignIdealCommandPose(ideal_delta_pose_x, ideal_delta_pose_y);
+        }
+
         return cmd_vel_;
     }
 
@@ -196,6 +213,8 @@ namespace nurbs_local_planner{
             //agv_direction_vector(1) = initial_pose.pose.position.y;
             eigen_curve_point = EigenVecter3dFromPointMsg(pCurve_common->CalculateCurvePoint(&spline_inf, u_data, UsingNURBS));
             agv_direction_vector = eigen_curve_point;
+            assignIdealCommandPose(eigen_curve_point(0), eigen_curve_point(1));
+            sum_ideal_theta += original_angle;
             AngularVelocity2_initialized = true;
         }
 
@@ -206,16 +225,16 @@ namespace nurbs_local_planner{
         
         agv_direction_vector = eigen_curve_point - eigen_curve_point_old;
 
-        angular_velocity = std::atan2(agv_direction_vector(1), agv_direction_vector(0)) - std::atan2(agv_direction_vector_old(1), agv_direction_vector_old(0));
+        ideal_theta = std::atan2(agv_direction_vector(1), agv_direction_vector(0)) - std::atan2(agv_direction_vector_old(1), agv_direction_vector_old(0));
 
         //debug use
         // std::cout << "now agv angle(with degree): " << std::atan2(agv_direction_vector_old(1), agv_direction_vector_old(0)) * 180 / M_PI  << "\n";
         // std::cout << "desire direction angle(with degree): " << std::atan2(agv_direction_vector(1), agv_direction_vector(0)) * 180 / M_PI  << "\n";
         // std::cout << "diff angle(with degree): " << angular_velocity * 180 / M_PI  << "\n";
         
-        angular_velocity = normalizeAngel(angular_velocity);
+        ideal_theta = normalizeAngel(ideal_theta);
         std::cout << "normalize diff angle(with degree): " << angular_velocity * 180 / M_PI  << "\n";
-        angular_velocity /= constraint->sampling_dt;
+        angular_velocity = ideal_theta / constraint->sampling_dt;
         return angular_velocity;
     }
 
@@ -304,12 +323,8 @@ namespace nurbs_local_planner{
             
     }
 
-    double NURBSPlanner::calculateAlignAngle(double robot_yaw, Spline_Inf spline_inf, double u_data, bool UsingNURBS)
+    double NURBSPlanner::calculateAlignAngle(double robot_yaw, double trajectory_initial_angle)
     {
-        Eigen::Vector3d original_vector(1, 0, 0); //for test
-        Eigen::Vector3d trajectory_original_point;
-        Eigen::Vector3d curve_vector;
-        Eigen::Vector3d desire_vector;
         Eigen::Vector3d initial_agv_vector;
         double fraction = 0;
         double denom = 0;
@@ -317,12 +332,8 @@ namespace nurbs_local_planner{
 
         initial_agv_vector(0) = std::cos(robot_yaw);
         initial_agv_vector(1) = std::sin(robot_yaw);
-        trajectory_original_point = EigenVecter3dFromPointMsg(pCurve_common->CalculateCurvePoint(&spline_inf, 0.0, UsingNURBS));
-        curve_vector = EigenVecter3dFromPointMsg(pCurve_common->CalculateCurvePoint(&spline_inf, u_data, UsingNURBS));
-        desire_vector = curve_vector - trajectory_original_point;
-    
-        //align_angle = std::atan2(curve_vector(1), curve_vector(0)) - std::atan2(original_vector(1), original_vector(0));
-        align_angle = std::atan2(initial_agv_vector(1), initial_agv_vector(0)) - std::atan2(desire_vector(1), desire_vector(0));
+       
+        align_angle = std::atan2(initial_agv_vector(1), initial_agv_vector(0)) - trajectory_initial_angle;
 
         //debug use
         // std::cout << "diff angle(with degree): " << align_angle * 180 / M_PI  << "\n";
@@ -330,6 +341,18 @@ namespace nurbs_local_planner{
         // std::cout << "desire angle(with degree): " << std::atan2(desire_vector(1), desire_vector(0)) * 180 / M_PI  << "\n";
 
         return align_angle;
+    }
+
+    double NURBSPlanner::calculateOriginalAngle(Spline_Inf spline_inf, double u_data, bool UsingNURBS)
+    {
+        Eigen::Vector3d trajectory_original_point;
+        Eigen::Vector3d curve_vector;
+        Eigen::Vector3d desire_vector;
+        trajectory_original_point = EigenVecter3dFromPointMsg(pCurve_common->CalculateCurvePoint(&spline_inf, 0.0, UsingNURBS));
+        curve_vector = EigenVecter3dFromPointMsg(pCurve_common->CalculateCurvePoint(&spline_inf, u_data, UsingNURBS));
+        desire_vector = curve_vector - trajectory_original_point;
+        original_angle = std::atan2(1, 0);
+        return std::atan2(desire_vector(1), desire_vector(0));
     }
 
     double NURBSPlanner::normalizeAngel(double ang_diff)
@@ -545,6 +568,37 @@ namespace nurbs_local_planner{
         }
         
         return delta_u;
+    }
+
+    void NURBSPlanner::assignIdealCommandPose(double delta_x, double delta_y)
+    {
+        geometry_msgs::PoseStamped ideal_commands_pose;
+        ideal_commands_pose.header.frame_id = "map";
+        ideal_commands_pose.header.seq = command_index;
+        ideal_commands_pose.header.stamp = ros::Time::now();
+        if(command_index == 0)
+        {
+            ideal_commands_pose.pose.position.x = delta_x;
+            ideal_commands_pose.pose.position.y = delta_y;
+        }
+        else
+        {
+            ideal_commands_pose.pose.position.x = ideal_commands_path.poses.at(command_index - 1).pose.position.x + delta_x;
+            ideal_commands_pose.pose.position.y = ideal_commands_path.poses.at(command_index - 1).pose.position.y + delta_y;
+        }
+        std::cout << "command index: " << command_index << "'s ideal_commands_pose_x is : " << ideal_commands_pose.pose.position.x << "\n";
+        std::cout << "command index: " << command_index << "'s ideal_commands_pose_y is : " << ideal_commands_pose.pose.position.y << "\n";
+        ideal_commands_path.poses.push_back(ideal_commands_pose);
+        command_index++;
+    }
+
+    void NURBSPlanner::publishIdealCommandsPath(std::string frame_id)
+    {
+        //TODO: clean ideal_commands_path when restart
+        ideal_commands_path.header.frame_id = frame_id;
+        ideal_commands_path.header.seq = 1;
+        ideal_commands_path.header.stamp = ros::Time::now();
+        ideal_commands_path_pub_.publish(ideal_commands_path);
     }
 
     inline double NURBSPlanner::calculateRootMeanSquareError(double value1, double value2)
