@@ -1,0 +1,7 @@
+<library path="libnurbs_controller">
+  <class name="nurbs_local_planner/NURBSPlannerROS" type="nurbs_local_planner::NURBSPlannerROS" base_class_type="mbf_costmap_core::CostmapController">
+    <description>
+      nurbs local planner
+    </description>
+  </class>
+</library>
