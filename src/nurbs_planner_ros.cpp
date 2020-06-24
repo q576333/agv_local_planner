@@ -17,7 +17,7 @@ namespace nurbs_local_planner{
         private_nh.param("use_nurbs", use_nurbs, false);
         private_nh.param("angle_tolerance", yaw_tolerance_, 0.01);
         private_nh.param("dist_tolerance", dist_tolerance_, 0.000001);
-        private_nh.param("radial_error", radial_error_, 0.01);
+        private_nh.param("chord_error", chord_error_, 0.01);
         private_nh.param("use_segment", use_segment_, true);
         if(use_existing_path)
         {
@@ -71,7 +71,7 @@ namespace nurbs_local_planner{
         //std::cout << "constraints_.a_max is : " << constraints_.a_max << "\n";
 
         //Trajectory partition and calculate each segment feedrate
-        trajectory_planner->adativeFeedrate(spline_inf_, trajectory_segment_vec, 0.002, use_nurbs);
+        trajectory_planner->adativeFeedrateCurvatureConstraint(spline_inf_, trajectory_segment_vec, 0.002, use_nurbs);
 
         //Preparing for remaining lenth interpolation
         //TODO: writing a function to initial remaining lenth interpolation

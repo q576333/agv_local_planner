@@ -40,6 +40,10 @@ namespace nurbs_local_planner{
         double ideal_length = 0;
         double update_delta_u = 0;
         double next_u_data = 0;
+        double left_accleration_times = 0;
+        double left_time_stop = 0;
+
+        //ideal command path use
         double ideal_delta_pose_x = 0;
         double ideal_delta_pose_y = 0;
 
@@ -77,20 +81,41 @@ namespace nurbs_local_planner{
                 suggest_velocity = constraint->v_max;
                 //std::cout << "constrainted suggest_velocity:" << suggest_velocity << "\n";
             }
-        }
-         
+        }    
         //std::cout << "original suggest_velocity is : " << suggest_velocity << "\n";
 
         //Computing suggest_accleration
         suggest_accleration = (suggest_velocity - current_velocity) / constraint->sampling_dt;
 
+        //Adjusting accleration maximum let agv in accleration and deceleration part more smooth
+        if(suggest_accleration >= 0)
+        {
+            left_accleration_times = std::floor((constraint->v_max - current_velocity) / (constraint->a_max * constraint->sampling_dt) + 0.5);
+            
+            if(left_accleration_times < 1)
+                left_accleration_times = 1;
+
+            constraint->adaptive_a_max = (constraint->v_max - current_velocity) / (left_accleration_times * constraint->sampling_dt);
+        }
+        else
+        {
+            left_time_stop = left_distance / (0.5 * (current_velocity - final_velocity) + final_velocity);
+            constraint->a_max = (current_velocity - final_velocity) / left_time_stop;
+            left_accleration_times = std::floor((current_velocity - final_velocity) / (constraint->adaptive_a_max * constraint->sampling_dt));
+            
+            if(left_accleration_times < 1)
+                left_accleration_times = 1;
+
+            constraint->adaptive_a_max = (current_velocity - final_velocity) / (left_accleration_times * constraint->sampling_dt);
+        }
+
         //Check suggest_accleration corresponding to some limitation
         if(suggest_accleration > 0)
         {          
             std::cout << "----------Now, agv is acclerating----------" << "\n";
-            if(suggest_accleration > constraint->a_max)
+            if(suggest_accleration > constraint->adaptive_a_max)
             {
-                suggest_accleration = constraint->a_max;  
+                suggest_accleration = constraint->adaptive_a_max;  
                 //TODO: show sampling time index
                 suggest_velocity = current_velocity + suggest_accleration * constraint->sampling_dt;
             }
@@ -98,9 +123,9 @@ namespace nurbs_local_planner{
         if(suggest_accleration < 0)
         {
             std::cout << "----------Now, agv is slow down----------" << "\n";
-            if(suggest_accleration < -1 * constraint->a_max)
+            if(suggest_accleration < -1 * constraint->adaptive_a_max)
             {
-                suggest_accleration = -1 * constraint->a_max;  
+                suggest_accleration = -1 * constraint->adaptive_a_max;  
                 //TODO: show sampling time index
                 suggest_velocity = current_velocity + suggest_accleration * constraint->sampling_dt;
             }
@@ -318,9 +343,7 @@ namespace nurbs_local_planner{
                 std::cout << "positive angular velocity" << "\n";
                 return false;
             }
-            
-        }
-            
+        }       
     }
 
     double NURBSPlanner::calculateAlignAngle(double robot_yaw, double trajectory_initial_angle)
@@ -404,7 +427,7 @@ namespace nurbs_local_planner{
         return cmd_vel_;
     }
 
-    void NURBSPlanner::adativeFeedrate(Spline_Inf spline_inf, std::vector<AdativeFeedrateSeg>& trajectory_seg, double delta_u, bool UsingNURBS)
+    void NURBSPlanner::adativeFeedrateCurvatureConstraint(Spline_Inf spline_inf, std::vector<AdativeFeedrateSeg>& trajectory_seg, double delta_u, bool UsingNURBS)
     {
         double u_data = 0.0;
         double start_u = 0.0;

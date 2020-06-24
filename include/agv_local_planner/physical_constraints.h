@@ -32,6 +32,7 @@ namespace nurbs_local_planner {
 
         double v_max;  // Meters/second
         double a_max;  // Meters/second^2
+        double adaptive_a_max;
         double system_a_max;
         double yaw_rate_max;  // Rad/second
         double robot_radius;  // Meters

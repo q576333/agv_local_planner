@@ -108,7 +108,7 @@ namespace nurbs_local_planner {
             double yaw_tolerance_;
             double dist_tolerance_;
 
-            double radial_error_;
+            double chord_error_;
             double an_max;
             double curvature_radius;
             bool use_segment_ = false;

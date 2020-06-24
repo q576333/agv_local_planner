@@ -31,7 +31,7 @@ namespace nurbs_local_planner {
             void setAlreadyMoveLength(double value);
             double getAlreadymoveLength();
             void publishIdealCommandsPath(std::string frame_id);
-            void adativeFeedrate(Spline_Inf spline_inf, std::vector<AdativeFeedrateSeg>& trajectory_seg, double delta_u, bool UsingNURBS);
+            void adativeFeedrateCurvatureConstraint(Spline_Inf spline_inf, std::vector<AdativeFeedrateSeg>& trajectory_seg, double delta_u, bool UsingNURBS);
             void setInitialPose(geometry_msgs::PoseStamped pose);
             void assignVelocity(geometry_msgs::TwistStamped &cmd_vel, double linear_velocity, double angular_velocity);
             double calculateAlignAngle(double robot_yaw, double trajectory_initial_angle);
@@ -71,6 +71,7 @@ namespace nurbs_local_planner {
             Eigen::Vector3d agv_direction_vector_old;
             double ideal_theta;
 
+            //Parameter of calculate linear velocity 
             double already_move_distance;
             double segment_already_move_distance;
 
