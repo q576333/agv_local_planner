@@ -23,15 +23,17 @@ namespace nurbs_local_planner {
     class NURBSPlanner
     {
         public:
-            NURBSPlanner(PhysicalConstraints *ref_constraint, ros::NodeHandle private_nh);
+            NURBSPlanner(PhysicalConstraints *ref_constraint, ros::NodeHandle private_nh, bool use_existing_path);
             ~NURBSPlanner();
 
+            void clearIdealCommandsPath();
             double getSegmentAlreadyMoveLength();
             void setSegmentAlreadyMoveLength(double value);
             void setAlreadyMoveLength(double value);
             double getAlreadymoveLength();
             void publishIdealCommandsPath(std::string frame_id);
-            void adativeFeedrateCurvatureConstraint(Spline_Inf spline_inf, std::vector<AdativeFeedrateSeg>& trajectory_seg, double delta_u, bool UsingNURBS);
+            void adaptiveFeedrate(Spline_Inf spline_inf, std::vector<AdativeFeedrateSeg>& trajectory_seg, double chord_error, double delta_u, bool UsingNURBS, bool use_segment);
+            void adaptiveFeedrateCurvatureConstraint(Spline_Inf spline_inf, std::vector<AdativeFeedrateSeg>& trajectory_seg, double delta_u, bool UsingNURBS);
             void setInitialPose(geometry_msgs::PoseStamped pose);
             void assignVelocity(geometry_msgs::TwistStamped &cmd_vel, double linear_velocity, double angular_velocity);
             double calculateAlignAngle(double robot_yaw, double trajectory_initial_angle);
@@ -49,6 +51,7 @@ namespace nurbs_local_planner {
             double calculateDeltaU(Spline_Inf spline_inf, double u_data, double suggested_velocity, int taylor_order, int compensate_times, bool UsingNURBS);
             inline double calculateRootMeanSquareError(double value1, double value2);
             void assignIdealCommandPose(double x, double y);
+            Eigen::Vector3d calculateOriginalVector(Spline_Inf spline_inf, double u_data, bool UsingNURBS);
             
             double arc_length;
             bool inverse_direction = false;
@@ -61,6 +64,7 @@ namespace nurbs_local_planner {
             ros::Publisher ideal_commands_path_pub_;
             nav_msgs::Path ideal_commands_path;
             int command_index;
+            int ideal_commands_path_seq;
             double sum_ideal_theta;
             double original_angle;
 
@@ -77,6 +81,7 @@ namespace nurbs_local_planner {
 
             std::unique_ptr<Curve_common> pCurve_common;
             PhysicalConstraints *constraint;
+            bool use_existing_path_;
     };
 };
 

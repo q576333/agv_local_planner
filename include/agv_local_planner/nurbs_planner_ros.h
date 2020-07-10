@@ -4,10 +4,12 @@
 #include <costmap_2d/costmap_2d_ros.h>
 #include <mbf_utility/types.h>
 #include <mbf_costmap_core/costmap_controller.h>
+#include <visualization_msgs/MarkerArray.h>
 
 #include <memory>
 
 #include "agv_local_planner/nurbs_planner.h"
+#include "agv_path_smoothing/color.h"
 
 namespace nurbs_local_planner {
 
@@ -86,34 +88,47 @@ namespace nurbs_local_planner {
             std::unique_ptr<Curve_common> curve_common_;
             std::unique_ptr<Curve_fitting> curve_fitting_;
 
+            //parameter of ros parameter server
             bool use_existing_path;
             bool pub_existing_path;
             bool use_nurbs;
+            bool use_segment_;
             ros::Publisher global_plan_pub;
             nav_msgs::Path existing_plan;
             std::vector<double> input_control_point;
             std::vector<double> input_knot_vector;
             std::vector<double> weight_vector;
 
-            std::vector<AdativeFeedrateSeg> trajectory_segment_vec;
-            double segment_left_distance;
-            double segment_already_move;
-            int segment_index;
-
+            //parameter of rotate to initial angle
             int count = 1; //debug use
-            bool aligned_orientation = false;
+            bool aligned_orientation;
             double rotate_angle; //need to rotate angle
             double trajectory_initial_angle;
             double robot_pose_yaw;
             double yaw_tolerance_;
             double dist_tolerance_;
 
+            //parameter of trajectory partition
             double chord_error_;
             double an_max;
             double curvature_radius;
-            bool use_segment_ = false;
+            std::vector<AdativeFeedrateSeg> trajectory_segment_vec;
+            //below for debug use
+            std::vector<geometry_msgs::Point> segment_point;
+            EigenTrajectoryPoint::Vector segment_point_eigen;
+            visualization_msgs::MarkerArray segment_point_maker_array;
+            ros::Publisher segment_point_maker_pub;
 
-            bool isInitialized = false;
+            //parameter of change next trajectory segment
+            double segment_left_distance;
+            double segment_already_move;
+            int segment_index;
+
+            //parameter of remain length interpolation 
+            bool isGetInitialPose;
+            bool isReached;
+            bool aligned_goalangle;
+            double goal_angle;
             double total_length;
             double accumulate_u;
             double current_velocity;

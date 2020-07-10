@@ -22,9 +22,10 @@ namespace nurbs_local_planner {
             nh.param("yaw_rate_max", yaw_rate_max, yaw_rate_max);
             nh.param("robot_radius", robot_radius, robot_radius);
             nh.param("break_velocity", break_velocity, v_max / 2);
-            //nh.param("sampling_dt", sampling_dt, sampling_dt);
+            nh.param("sampling_dt", sampling_dt, 0.01);
+            std::cout << "sampling time : " << sampling_dt << "\n";
             //TODO: Can modify sampliing time in launch file
-            sampling_dt = 0.01;
+            //sampling_dt = 0.01;
             v_max_squre = std::pow(v_max, 2);
             a_max_squre = std::pow(a_max, 2);
             sampling_dt_squre = std::pow(sampling_dt, 2);
