@@ -14,21 +14,28 @@ namespace nurbs_local_planner{
         ros::NodeHandle private_nh("~/" + name);
         constraints_.setParametersFromRos(private_nh);
         private_nh.param("use_existing_path", use_existing_path, false);
-        private_nh.param("pub_existing_path", pub_existing_path, false);
+        private_nh.param("pub_fitting_path", pub_fitting_path_, false);
         private_nh.param("use_nurbs", use_nurbs, false);
         private_nh.param("angle_tolerance", yaw_tolerance_, 0.01);
         private_nh.param("dist_tolerance", dist_tolerance_, 0.000001);
         private_nh.param("chord_error", chord_error_, 0.01);
         private_nh.param("use_segment", use_segment_, true);
+        private_nh.param("use_limit_fitting", use_limit_fitting_, false);
+        private_nh.param("test_limit_fitting", test_limit_fitting_, false);
+        if(use_limit_fitting_)
+        {
+            private_nh.param("start_vector_weight", start_vector_weight_, 2.0);
+            private_nh.param("goal_vector_weight", goal_vector_weight_, 2.0);
+        }
         if(use_existing_path)
         {
-            global_plan_pub = private_nh.advertise<nav_msgs::Path>("existing_plan", 1, true);
             private_nh.getParam("control_point", input_control_point);
             private_nh.getParam("knot_vector", input_knot_vector);
             private_nh.getParam("weight_vector", weight_vector);
         }
 
         segment_point_maker_pub = private_nh.advertise<visualization_msgs::MarkerArray>("segment_point", 1, true);
+        global_plan_pub = private_nh.advertise<nav_msgs::Path>("existing_plan", 1, true);
 
         curve_common_ = std::make_unique<Curve_common>();
         curve_fitting_ = std::make_unique<Curve_fitting>();
@@ -44,24 +51,48 @@ namespace nurbs_local_planner{
     bool NURBSPlannerROS::setPlan(const std::vector<geometry_msgs::PoseStamped> &plan)
     {
         std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > control_point;
+        std::vector<geometry_msgs::Point> derivatives_vector;
+        double start_point_yaw = 0;
+        double goal_point_yaw = 0;
 
         //Path smoothing in this scope
         if(!use_existing_path)
         {
             fitting_point_eigen_vec = EigenTrajectoryVectorFromVector(plan);
-            spline_inf_ = curve_fitting_->UnLimitCurveFitting(fitting_point_eigen_vec, 3, dis_u_method::Chord, knotvector_method::Average);
+            if(!use_limit_fitting_)
+            {
+                std::cout << "Using unlimit curve fitting" << "\n";
+                spline_inf_ = curve_fitting_->UnLimitCurveFitting(fitting_point_eigen_vec, 3, dis_u_method::Chord, knotvector_method::Average);
+            }
+            else
+            {
+                std::cout << "Using limit curve fitting" << "\n";
+                start_point_yaw = tf::getYaw(plan.at(0).pose.orientation);
+                goal_point_yaw = tf::getYaw(plan.back().pose.orientation);
+                derivatives_vector.resize(2);
+                derivatives_vector.at(0).x = std::cos(start_point_yaw);
+                derivatives_vector.at(0).y = std::sin(start_point_yaw);
+                derivatives_vector.at(1).x = std::cos(goal_point_yaw);
+                derivatives_vector.at(1).y = std::sin(goal_point_yaw);
+                spline_inf_ = curve_fitting_->LimitCurveFitting(fitting_point_eigen_vec, 3, derivatives_vector, dis_u_method::Chord, knotvector_method::LimitDerivative_Average, start_vector_weight_, goal_vector_weight_);
+            }
         }
         else
         {
             curve_common_->ReadDiscreate2DPointFromLaunch(&control_point, input_control_point);
             curve_common_->ReadSplineInf(&spline_inf_, 3, control_point, input_knot_vector);
             curve_common_->ReadSplineInf(&spline_inf_, weight_vector, false);       
-            if(pub_existing_path)
-            {
-                existing_plan = curve_common_->Generate_NURBSCurve(spline_inf_, 0.01, "map");
-                global_plan_pub.publish(existing_plan);
-            }
         }
+
+        if(pub_fitting_path_) 
+        {
+            existing_plan = curve_common_->Generate_NURBSCurve(spline_inf_, 0.01, "map");
+            global_plan_pub.publish(existing_plan);
+        }
+
+        if(test_limit_fitting_)
+            return false;
+
         total_length = curve_common_->CalculateCurveLength(spline_inf_, 0.0, 1.0, 50000, use_nurbs);
         //std::cout << "total_length is : " << total_length << "\n";
 

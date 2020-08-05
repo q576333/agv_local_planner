@@ -90,9 +90,13 @@ namespace nurbs_local_planner {
 
             //parameter of ros parameter server
             bool use_existing_path;
-            bool pub_existing_path;
+            bool pub_fitting_path_;
             bool use_nurbs;
             bool use_segment_;
+            bool use_limit_fitting_;
+            bool test_limit_fitting_;
+            double start_vector_weight_;
+            double goal_vector_weight_;
             ros::Publisher global_plan_pub;
             nav_msgs::Path existing_plan;
             std::vector<double> input_control_point;
