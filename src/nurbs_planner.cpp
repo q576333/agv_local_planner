@@ -5,13 +5,29 @@ namespace nurbs_local_planner{
     
     NURBSPlanner::NURBSPlanner(PhysicalConstraints *ref_constraint, ros::NodeHandle private_nh, bool use_existing_path)
     {
+        ros::NodeHandle distance_map_nh("distance_map_node");
+        //ros::NodeHandle costmap_nh("move_base_flex/global_costmap");
         pCurve_common = std::make_unique<Curve_common>();
         constraint = ref_constraint;
         ideal_commands_path_pub_ = private_nh.advertise<nav_msgs::Path>("ideal_commands_path", 1, true);
+        get_distance_srv_client = distance_map_nh.serviceClient<distance_map_node::GetDistance>("GetDistance");
+        //robot_footprint_sub = costmap_nh.subscribe<geometry_msgs::Polygon>("footprint", 1, &NURBSPlanner::callbackGetFootprint, this);
+        private_nh.param("use_feedback", use_feedback_, false);
+        private_nh.getParam("robot_footprint", robot_footprint_vec);
         use_existing_path_ = use_existing_path;
         command_index = 0;
         sum_ideal_theta = 0;
         ideal_commands_path_seq = 0;
+
+        int footprint_index = 0;
+        int footprint_size = robot_footprint_vec.size() / 2;
+        require_footprint.points.resize(footprint_size);
+        for(int i = 0; i < footprint_size; i++)
+        {
+            require_footprint.points.at(i).x = robot_footprint_vec.at(footprint_index);
+            require_footprint.points.at(i).y = robot_footprint_vec.at(footprint_index + 1);
+            footprint_index += 2;
+        }
     }
 
     NURBSPlanner::~NURBSPlanner()
@@ -44,13 +60,30 @@ namespace nurbs_local_planner{
         double next_u_data = 0;
         int left_accleration_times = 0;
         double left_time_stop = 0;
+        double nearest_obstacle_distance = 0;
 
         //ideal command path use
         double ideal_delta_pose_x = 0;
         double ideal_delta_pose_y = 0;
 
+        //Checking linear velocity boundary
+        if(use_feedback_)
+        {
+            nearest_obstacle_distance = calculateNearestObstacleDistance(robot_pose);
+            constraint->v_distance_max = -1 * constraint->system_linear_a_max * constraint->reaction_time + std::sqrt(constraint->system_linear_a_max_square * constraint->reaction_time_square + 2 * constraint->system_linear_a_max * nearest_obstacle_distance);
+            if(constraint->v_distance_max < 0)
+                constraint->v_distance_max = 0;
+            constraint->v_max = std::min(constraint->v_system_max, constraint->v_distance_max);
+            // std::cout << "constraint->v_distance_max : " << constraint->v_distance_max << "\n";
+            // std::cout << "constraint->v_max : " << constraint->v_max << "\n";
+        }
+        else
+        {
+            constraint->v_max = constraint->v_system_max;
+        }
+
         //Computing suggest_velocity
-        right_term = std::sqrt(std::pow(final_velocity, 2) + 0.25 * constraint->a_max_squre * constraint->sampling_dt_squre + constraint->a_max * (2 * left_distance - current_velocity * constraint->sampling_dt));
+        right_term = std::sqrt(std::pow(final_velocity, 2) + 0.25 * constraint->a_max_square * constraint->sampling_dt_square + constraint->a_max * (2 * left_distance - current_velocity * constraint->sampling_dt));
         suggest_velocity = -0.5 * constraint->a_max * constraint->sampling_dt + right_term;
 
         if(std::isnan(right_term))
@@ -168,7 +201,7 @@ namespace nurbs_local_planner{
         // std::cout << "accleration constrained update_suggest_velocity is : " << update_suggest_velocity << "\n";
         // std::cout << "constrained suggest_accleration is : " << suggest_accleration << "\n";
 
-        delta_u = calculateDeltaU(spline_inf, u_data, update_suggest_velocity, 1, 3, UsingNURBS);
+        delta_u = calculateDeltaU(spline_inf, u_data, update_suggest_velocity, 2, 3, UsingNURBS);
         next_u_data = u_data + delta_u;
         if(next_u_data > 1)
         {
@@ -190,7 +223,7 @@ namespace nurbs_local_planner{
         else
             update_suggest_velocity = ideal_length / constraint->sampling_dt;    
 
-        //std::cout << "ideal_length is : " << ideal_length << "\n";
+        std::cout << "ideal_length is : " << ideal_length << "\n";
         segment_already_move_distance += ideal_length;
         already_move_distance += ideal_length;
 
@@ -203,8 +236,15 @@ namespace nurbs_local_planner{
         //angular_velocity = computeAngularVelocity(spline_inf, u_data, delta_u, UsingNURBS);
         angular_velocity = computeAngularVelocityMethod2(spline_inf, u_data, delta_u, UsingNURBS);
 
-        std::cout << "angular_velocity is : " << angular_velocity << "\n";
         u_data += delta_u;
+
+        if(angular_velocity < 0.00001)
+        {
+            if(angular_velocity > -0.00001)
+                angular_velocity = 0;
+        }
+        std::cout << "angular_velocity is : " << angular_velocity << "\n";
+
         assignVelocity(cmd_vel_, update_suggest_velocity, angular_velocity);
         //assignVelocity(cmd_vel_, 0.0, 0.0);
         cmd_vel_.twist.linear.z = suggest_velocity;
@@ -752,13 +792,57 @@ namespace nurbs_local_planner{
         if(taylor_order == 2)
         {
             eigen_derivative_twice_point = EigenVecter3dFromPointMsg(pCurve_common->CalculateDerivativeCurvePoint(&spline_inf, u_data, 2, UsingNURBS));
-            fraction = std::pow(suggested_velocity, 2) * constraint->sampling_dt_squre * eigen_derivative_point.dot(eigen_derivative_twice_point);
+            fraction = std::pow(suggested_velocity, 2) * constraint->sampling_dt_square * eigen_derivative_point.dot(eigen_derivative_twice_point);
             denominator = 2 * std::pow(eigen_derivative_point.lpNorm<2>(), 3);  
             delta_u_order2 = fraction / denominator;
             delta_u = delta_u_order1 - delta_u_order2;
         }
         
         return delta_u;
+    }
+
+    double NURBSPlanner::calculateNearestObstacleDistance(geometry_msgs::PoseStamped robot_pose)
+    {
+        //Require distance_map package to calculate nearest obstacle distance
+        double near_distance = 0;
+        
+        get_distance_srv_.request.pose = robot_pose;
+        get_distance_srv_.request.robot_footprint = require_footprint;
+
+        if(get_distance_srv_client.call(get_distance_srv_))
+        {
+            near_distance = get_distance_srv_.response.distance;
+            std::cout << "near distance value is : " << near_distance << "\n";
+        }
+        else
+        {
+            near_distance = 1000; //TODO : how to check if service is faild?
+            std::cout << " Couldn't get distance value" << "\n";
+        }
+
+        return near_distance;
+    }
+
+    // void NURBSPlanner::callbackGetFootprint(const geometry_msgs::Polygon input_footprint)
+    // {
+    //     std::cout << "Subscribe the footprint" << "\n";
+    //     robot_footprint = input_footprint.points;
+    //     std::cout << "End subscribe the footprint" << "\n";
+    // }
+
+    double NURBSPlanner::calculateLinearVelocityBoundaryWithCurvature(Spline_Inf spline_inf, double u_data, double next_u_data, bool UsingNURBS)
+    {
+        double curvature_old = 0;
+        double curvature_new = 0;
+        double curvature_sum = 0; //curvature_old + curvature_new
+        double curvature_diff = 0; //curvature_old - curvature_new
+        double velocity_boundary = 0;
+        
+        curvature_old = pCurve_common->CalculateSignedCurvature(spline_inf, u_data, UsingNURBS);
+        curvature_new = pCurve_common->CalculateSignedCurvature(spline_inf, next_u_data, UsingNURBS);
+        curvature_sum = curvature_old + curvature_new;
+        curvature_diff = curvature_old - curvature_new;  
+        return 0;
     }
 
     void NURBSPlanner::assignIdealCommandPose(double delta_x, double delta_y)

@@ -6,7 +6,10 @@
 #include "agv_path_smoothing/conversion.h"
 #include "agv_local_planner/physical_constraints.h"
 
+#include "distance_map_node/GetDistance.h"
+
 #include <geometry_msgs/TwistStamped.h>
+#include <geometry_msgs/Polygon.h>
 
 namespace nurbs_local_planner {
     
@@ -46,12 +49,15 @@ namespace nurbs_local_planner {
             double computeAngularVelocity(Spline_Inf spline_inf, double &u_data, double delta_u, bool UsingNURBS);
             double computeAngularVelocityMethod2(Spline_Inf spline_inf, double &u_data, double delta_u, bool UsingNURBS); 
             bool checkInitialdirection(Spline_Inf spline_inf, bool UsingNURBS);
-            bool checkdirection(Spline_Inf spline_inf,double u_data, double next_u_data, bool UsingNURBS, bool direction);
+            bool checkdirection(Spline_Inf spline_inf, double u_data, double next_u_data, bool UsingNURBS, bool direction);
             double calculateIdealLength(Spline_Inf spline_inf, double u_data, double next_u_data, bool UsingNURBS);
             double calculateDeltaU(Spline_Inf spline_inf, double u_data, double suggested_velocity, int taylor_order, int compensate_times, bool UsingNURBS);
             inline double calculateRootMeanSquareError(double value1, double value2);
             void assignIdealCommandPose(double x, double y);
             Eigen::Vector3d calculateOriginalVector(Spline_Inf spline_inf, double u_data, bool UsingNURBS);
+            double calculateNearestObstacleDistance(geometry_msgs::PoseStamped robot_pose);
+            //void callbackGetFootprint(const geometry_msgs::Polygon input_footprint);
+            double calculateLinearVelocityBoundaryWithCurvature(Spline_Inf spline_inf, double u_data, double next_u_data, bool UsingNURBS);
             
             double arc_length;
             bool inverse_direction = false;
@@ -59,6 +65,15 @@ namespace nurbs_local_planner {
             bool initialed = false;
             bool AngularVelocity2_initialized = false;
             geometry_msgs::PoseStamped initial_pose;
+
+            //Parameter of calculate obstacle distance 
+            bool use_feedback_;
+            ros::ServiceClient get_distance_srv_client;
+            distance_map_node::GetDistance get_distance_srv_;
+            //ros::Subscriber robot_footprint_sub;
+            std::vector<double> robot_footprint_vec;
+            geometry_msgs::Polygon require_footprint;
+            //std::vector<geometry_msgs::Point32, std::allocator<geometry_msgs::Point32>> robot_footprint;
 
             //For evaluation use
             ros::Publisher ideal_commands_path_pub_;
@@ -81,6 +96,8 @@ namespace nurbs_local_planner {
 
             std::unique_ptr<Curve_common> pCurve_common;
             PhysicalConstraints *constraint;
+
+            //Parameter server use
             bool use_existing_path_;
     };
 };

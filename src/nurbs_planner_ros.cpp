@@ -99,7 +99,7 @@ namespace nurbs_local_planner{
         curvature_radius = curve_common_->CalculateCurvatureRadius(spline_inf_, 0.3, use_nurbs);
 
         //TODO: Adding at_max limitation
-        //an_max = (8 * radial_error_ / constraints_.sampling_dt_squre) - (4 * radial_error_ / curvature_radius * constraints_.sampling_dt_squre);
+        //an_max = (8 * radial_error_ / constraints_.sampling_dt_square) - (4 * radial_error_ / curvature_radius * constraints_.sampling_dt_square);
         //std::cout << "an_max is : " << an_max << "\n";
         // an_max = 0.0625;
         // constraints_.a_max = std::sqrt( std::pow(constraints_.system_a_max, 2) - std::pow(an_max, 2));
@@ -137,6 +137,7 @@ namespace nurbs_local_planner{
         segment_already_move = 0;
         segment_index = 0;
         rotate_angle = 0;
+        retry_times = 0;
         isGetInitialPose = false;
         aligned_orientation = false;
         isReached = false;
@@ -242,7 +243,7 @@ namespace nurbs_local_planner{
                 
                 //Updating unreached distance of trajectory 
                 left_distance = total_length - already_move;
-                current_velocity = cmd_vel.twist.linear.z;
+                current_velocity = cmd_vel.twist.linear.z; //TODO: need return new variable
 
                 std::cout << "accumulate_u is :" << accumulate_u << "\n";
                 std::cout << "current_velocity is :" << current_velocity << "\n";  
@@ -254,6 +255,13 @@ namespace nurbs_local_planner{
                     left_distance = 0; 
                     isReached = true;
                     std::cout << "left_distance is reached or accumulate_u bigger than 1"<< "\n";
+                }
+
+                if(cmd_vel.twist.linear.x == 0)
+                {
+                    retry_times++;
+                    if(retry_times > 3)
+                        return 11;
                 }
                 
                 count++;

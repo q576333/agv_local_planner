@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
     mbf_utility
     mbf_costmap_core
     agv_path_smoothing
+    distance_map_node
     pluginlib
     roscpp
     std_msgs
@@ -23,7 +24,7 @@ find_package(Eigen3 REQUIRED)
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES nurbs_controller
-  CATKIN_DEPENDS costmap_2d mbf_utility mbf_costmap_core pluginlib roscpp std_msgs geometry_msgs agv_path_smoothing
+  CATKIN_DEPENDS costmap_2d mbf_utility mbf_costmap_core pluginlib roscpp std_msgs geometry_msgs agv_path_smoothing distance_map_node
 #  DEPENDS system_lib
 )
 

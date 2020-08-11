@@ -141,6 +141,9 @@ namespace nurbs_local_planner {
             double already_move;
             EigenTrajectoryPoint::Vector fitting_point_eigen_vec;
             Spline_Inf spline_inf_;
+
+            //Parameter of feedback
+            int retry_times;
     };
 };
 
